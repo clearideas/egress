@@ -56,10 +56,10 @@ The optional container installs separately licensed system packages; see [third-
 
 ## Development
 
+Run the tests and Python syntax check from the repository root:
+
 ```sh
-python -m pip install -e .
-python -m unittest discover -s tests -v
-python -m compileall -q src
+make test
 ```
 
-CI runs these checks on multiple Python versions. A real Squid integration suite and production deployment verification are future work.
+This requires Python 3.11 or newer and `make`; it does not require installing the package first. CI also installs the package and runs `make test` on multiple Python versions. A real Squid integration suite and production deployment verification are future work.

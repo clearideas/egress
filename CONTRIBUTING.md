@@ -1,3 +1,5 @@
 # Contributing
 
-Open an issue or pull request with the problem, expected behavior, and relevant tests. Run `npm run check` and `npm test` before submitting. Policy changes should include allow, deny, malformed-input and backend-failure cases. Please use the private reporting path in SECURITY.md for vulnerabilities.
+Open an issue to discuss significant behavior changes. For a pull request, include the security boundary affected, tests for allowed and denied cases, and documentation updates. Run `python -m unittest discover -s tests -v` and `python -m compileall -q src` before submitting.
+
+Do not include production policies, credentials, customer data, or private infrastructure details. Report suspected vulnerabilities privately as described in [SECURITY.md](SECURITY.md).

@@ -1,0 +1,11 @@
+services:
+  egress:
+    build: .
+    environment:
+      EGRESS_PROXY_USER: demo
+      EGRESS_PROXY_PASSWORD: ${EGRESS_PROXY_PASSWORD:?Set a local demo password}
+      EGRESS_POLICY_FILE: /etc/egress/policy.json
+    volumes:
+      - ./examples/policy.json:/etc/egress/policy.json:ro
+    ports:
+      - 127.0.0.1:3128:3128

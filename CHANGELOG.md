@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — npm CLI metadata
+
+- Corrected the npm CLI path so installs expose `clearideas-egress-acl`.
+
 ## 0.1.0 — initial source release
 
 - Added a generic Squid external ACL helper and npm library.

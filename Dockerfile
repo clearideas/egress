@@ -1,13 +1,12 @@
-FROM node:22-alpine
+FROM python:3.12-alpine
 RUN apk add --no-cache squid apache2-utils tini
 WORKDIR /app
-COPY package.json ./
+COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
-COPY bin/ ./bin/
+RUN python -m pip install --no-cache-dir .
 COPY docker/squid.conf.template /etc/squid/squid.conf.template
 COPY docker/entrypoint.sh /usr/local/bin/egress-entrypoint
-RUN chmod +x /app/bin/egress-acl.js /usr/local/bin/egress-entrypoint \
-  && ln -s /app/bin/egress-acl.js /usr/local/bin/clearideas-egress-acl \
+RUN chmod +x /usr/local/bin/egress-entrypoint \
   && mkdir -p /var/log/squid /run/squid \
   && chown -R squid:squid /var/log/squid /run/squid
 EXPOSE 3128

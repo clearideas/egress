@@ -1,7 +1,7 @@
 visible_hostname egress
 http_port 3128
 cache deny all
-access_log stdio:/dev/stdout squid
+access_log stdio:/var/log/squid/access.log squid
 
 auth_param basic program __BASIC_AUTH_HELPER__ /etc/squid/passwd
 auth_param basic realm Egress

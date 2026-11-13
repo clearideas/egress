@@ -1,6 +1,7 @@
 .git
 .github
-node_modules
-test
-*.tgz
-.env
+.venv
+__pycache__
+*.pyc
+tests
+docs

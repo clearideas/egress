@@ -1,0 +1,10 @@
+# Test image: the production image plus the E2E fixtures' tools. The E2E suite then runs against
+# the image's own Squid (Alpine), Python, installed package and entrypoint. See tests/docker/e2e.sh.
+ARG BASE=clearideas-egress:test
+FROM ${BASE}
+USER root
+RUN apk add --no-cache haproxy nftables redis iproute2 curl
+ENV PYTHONDONTWRITEBYTECODE=1
+# Reap orphaned Squid helper processes between E2E cases. The suite starts many
+# short-lived proxies, and Python alone as PID 1 leaves their exited children as zombies.
+ENTRYPOINT ["/sbin/tini", "-g", "--", "/bin/sh", "/src/tests/docker/in-container.sh"]

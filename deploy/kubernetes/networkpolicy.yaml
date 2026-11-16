@@ -1,0 +1,86 @@
+# Network-layer backstop for the egress proxy pods (security review M-3), Kubernetes variant.
+# Same intent as deploy/nftables/egress-proxy.nft: the proxy may reach the internet, its DNS
+# resolver and its policy arbiter, and nothing else internal. Requires a CNI that enforces
+# NetworkPolicy egress rules (Calico, Cilium, ...). Adjust labels, namespaces and CIDRs.
+#
+# NOTE: NetworkPolicy cannot express "internet minus a list" for IPv6 and v4 in one ipBlock;
+# both blocks are listed. Cloud metadata endpoints are covered by the except lists.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-proxy-backstop
+  namespace: egress
+spec:
+  podSelector:
+    matchLabels:
+      app: egress-proxy
+  policyTypes: ["Egress", "Ingress"]
+  ingress:
+    # Only sandboxes (or the load balancer in front of the proxy) may connect.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              egress-client: "true"   # label the namespaces allowed to use the proxy
+      ports:
+        - protocol: TCP
+          port: 3128
+  egress:
+    # DNS (cluster resolver).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Policy arbiter.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: egress-control
+          podSelector:
+            matchLabels:
+              app: egress-arbiter
+      ports:
+        - { protocol: TCP, port: 443 }
+    # The internet, minus internal and special-purpose ranges.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 0.0.0.0/8
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.0.0.0/24
+              - 192.0.2.0/24
+              - 192.168.0.0/16
+              - 198.18.0.0/15
+              - 198.51.100.0/24
+              - 203.0.113.0/24
+              - 224.0.0.0/4
+              - 240.0.0.0/4
+              - 168.63.129.16/32
+        - ipBlock:
+            cidr: ::/0
+            except:
+              - ::/128
+              - ::1/128
+              - 64:ff9b::/96
+              - 64:ff9b:1::/48
+              - 100::/64
+              - 2001::/32
+              - 2001:db8::/32
+              - 2002::/16
+              - fc00::/7
+              - fe80::/10
+              - fec0::/10
+              - ff00::/8
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }

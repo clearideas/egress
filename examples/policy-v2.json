@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "principals": {
+    "sbx-example": {
+      "sources": ["10.20.0.0/24"],
+      "origins": [
+        "https://pypi.org",
+        "https://files.pythonhosted.org",
+        {"origin": "http://archive.ubuntu.com", "methods": ["GET", "HEAD"]},
+        {"origin": "https://ssh.github.com", "allowNonTls": true}
+      ]
+    }
+  }
+}

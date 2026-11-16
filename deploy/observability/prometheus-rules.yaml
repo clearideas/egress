@@ -1,0 +1,101 @@
+# Prometheus alerting rules for the egress proxy (PrometheusRule for the Prometheus Operator).
+# Metrics come from clearideas-egress-monitor (/metrics on port 9090). Every expression here is
+# checked against the metrics the code emits by tests/unit/test_observability.py.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: egress-proxy
+  labels:
+    app: egress-proxy
+spec:
+  groups:
+    - name: egress-availability
+      rules:
+        - alert: EgressSquidDown
+          expr: egress_squid_up == 0
+          for: 1m
+          labels: {severity: critical}
+          annotations:
+            summary: "Squid is not answering on {{ $labels.instance }}"
+        - alert: EgressNotReady
+          expr: egress_ready == 0 and egress_draining == 0
+          for: 2m
+          labels: {severity: warning}
+          annotations:
+            summary: "Egress replica {{ $labels.instance }} is not ready (see /readyz problems)"
+        - alert: EgressHelperMisconfigured
+          expr: max by (instance, mode) (egress_helper_misconfigured) > 0
+          for: 1m
+          labels: {severity: critical}
+          annotations:
+            summary: "Egress {{ $labels.mode }} helper on {{ $labels.instance }} is denying all requests (configuration problem)"
+        - alert: EgressPolicyBackendFailures
+          expr: |
+            sum by (instance) (rate(egress_decisions_total{reason=~"backend_error|backend_timeout|backend_saturated"}[5m]))
+              / clamp_min(sum by (instance) (rate(egress_decisions_total[5m])), 1e-9) > 0.01
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: "More than 1% of policy decisions fail on {{ $labels.instance }} (sandboxes get 503)"
+        - alert: EgressPolicyLatencyHigh
+          expr: |
+            histogram_quantile(0.99, sum by (le, instance) (rate(egress_policy_decision_seconds_bucket[5m]))) > 5
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "p99 policy decision latency above 5 s on {{ $labels.instance }}"
+        - alert: EgressHelperQueueBacklog
+          expr: max by (instance, helper) (egress_helper_pool_queue_length) > 0
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: "Requests queue for Squid helper {{ $labels.helper }} on {{ $labels.instance }}"
+        - alert: EgressFileDescriptorsHigh
+          expr: |
+            egress_squid_file_descriptors{state="used"} / ignoring(state) egress_squid_file_descriptors{state="max"} > 0.8
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: "Squid on {{ $labels.instance }} uses more than 80% of its file descriptors"
+        - alert: EgressConfigReloadFailed
+          expr: increase(egress_config_reloads_total{result="error"}[10m]) > 0
+          labels: {severity: warning}
+          annotations:
+            summary: "A policy file edit was rejected on {{ $labels.instance }}; the last good policy is still in use"
+        - alert: EgressErrorCAExpiringSoon
+          expr: egress_error_ca_not_after_timestamp_seconds - time() < 21 * 86400
+          labels: {severity: warning}
+          annotations:
+            summary: "The error CA on {{ $labels.instance }} expires within 21 days; roll out a new CA to sandbox trust stores, then to the proxy"
+        - alert: EgressCredentialUnavailable
+          expr: increase(egress_request_checks_total{reason="credential_unavailable"}[5m]) > 0
+          labels: {severity: warning}
+          annotations:
+            summary: "Credential injection has no usable secret on {{ $labels.instance }} (requests get 503)"
+    - name: egress-security
+      rules:
+        - alert: EgressSignatureAttack
+          expr: increase(egress_signatures_total{reason=~"bad_signature|nonce_replayed|unknown_key|invalid_identity"}[5m]) > 0
+          labels: {severity: security}
+          annotations:
+            summary: "Forged, replayed or unknown-key signed requests on {{ $labels.instance }} ({{ $labels.reason }})"
+        - alert: EgressTLSPolicyViolation
+          expr: increase(egress_tls_checks_total{reason=~"sni_mismatch|sni_invalid"}[5m]) > 0
+          labels: {severity: security}
+          annotations:
+            summary: "CONNECT tunnels with a mismatched TLS SNI (domain fronting?) on {{ $labels.instance }}"
+        - alert: EgressAuthFailureSpike
+          expr: sum by (instance) (increase(egress_auth_total{decision="deny"}[5m])) > 20
+          labels: {severity: security}
+          annotations:
+            summary: "More than 20 failed proxy authentications in 5 minutes on {{ $labels.instance }}"
+        - alert: EgressRevokedPrincipalActive
+          expr: increase(egress_request_checks_total{reason="revoked"}[5m]) > 0
+          labels: {severity: security}
+          annotations:
+            summary: "A revoked principal is still sending requests on {{ $labels.instance }}"
+        - alert: EgressAmbiguousPaths
+          expr: increase(egress_decisions_total{reason="ambiguous_path"}[5m]) > 0
+          labels: {severity: security}
+          annotations:
+            summary: "Requests with dot-segment paths (traversal attempts) on {{ $labels.instance }}"

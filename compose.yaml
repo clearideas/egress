@@ -1,11 +1,23 @@
+# Local, loopback-only demonstration. Not a production deployment.
+#   EGRESS_DEMO_PASSWORD='choose-a-local-password' docker compose up --build
 services:
   egress:
     build: .
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /run/egress:mode=1777,size=16m
     environment:
-      EGRESS_PROXY_USER: demo
-      EGRESS_PROXY_PASSWORD: ${EGRESS_PROXY_PASSWORD:?Set a local demo password}
+      EGRESS_DEMO_USER: demo
+      EGRESS_DEMO_PASSWORD: ${EGRESS_DEMO_PASSWORD:?Set a local demo password}
       EGRESS_POLICY_FILE: /etc/egress/policy.json
+      # If the container cannot resolve names (README, "Quick start troubleshooting"):
+      # EGRESS_DNS_NAMESERVERS: "10.0.0.2"
     volumes:
-      - ./examples/policy.json:/etc/egress/policy.json:ro
+      # The directory, not the single file: editors that save by replacing the file would otherwise
+      # leave the container looking at the old copy. Edits are picked up within ~2 seconds.
+      - ./examples:/etc/egress:ro
     ports:
       - 127.0.0.1:3128:3128
+      - 127.0.0.1:9090:9090   # /livez, /readyz, /metrics

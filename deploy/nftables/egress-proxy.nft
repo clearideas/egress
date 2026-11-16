@@ -1,0 +1,75 @@
+#!/usr/sbin/nft -f
+# Network-layer backstop for the Clear Ideas egress proxy (security review M-3).
+#
+# Squid's deny list is enforced by Squid itself, from DNS answers. This ruleset is an
+# independent second layer: even a Squid misconfiguration or parser bug cannot open a
+# connection from the proxy to metadata services, private networks or other internal
+# addresses. Load it in the proxy's network namespace (host, VM, or the pod's netns via an
+# init container with CAP_NET_ADMIN) and keep it in sync with
+# src/clearideas_egress/templates/deny-cidrs.conf (tests/unit/test_deploy.py checks this).
+#
+# Edit the four defines for your environment: the DNS resolvers the proxy uses and the
+# internal control-plane endpoints it must reach (policy arbiter, log/metrics collectors).
+# Everything in them is exempt from the deny sets below, so keep them exact (/32, /128).
+
+define RESOLVERS_V4 = { 127.0.0.53 }
+define RESOLVERS_V6 = { ::1 }
+define CONTROL_V4 = { 127.0.0.1 }
+define CONTROL_V6 = { ::1 }
+
+table inet egress_backstop
+flush table inet egress_backstop
+
+table inet egress_backstop {
+	set deny_v4 {
+		type ipv4_addr
+		flags interval
+		elements = {
+			0.0.0.0/8,
+			10.0.0.0/8,
+			100.64.0.0/10,
+			127.0.0.0/8,
+			169.254.0.0/16,
+			172.16.0.0/12,
+			192.0.0.0/24,
+			192.0.2.0/24,
+			192.168.0.0/16,
+			198.18.0.0/15,
+			198.51.100.0/24,
+			203.0.113.0/24,
+			224.0.0.0/4,
+			240.0.0.0/4,
+			168.63.129.16/32
+		}
+	}
+
+	set deny_v6 {
+		type ipv6_addr
+		flags interval
+		elements = {
+			::/128,
+			::1/128,
+			64:ff9b::/96,
+			64:ff9b:1::/48,
+			100::/64,
+			2001::/32,
+			2001:db8::/32,
+			2002::/16,
+			fc00::/7,
+			fe80::/10,
+			fec0::/10,
+			ff00::/8
+		}
+	}
+
+	chain output {
+		type filter hook output priority filter; policy accept;
+		ct state established,related accept
+		ip daddr $RESOLVERS_V4 meta l4proto { udp, tcp } th dport 53 accept
+		ip6 daddr $RESOLVERS_V6 meta l4proto { udp, tcp } th dport 53 accept
+		ip daddr $CONTROL_V4 accept
+		ip6 daddr $CONTROL_V6 accept
+		ip daddr @deny_v4 counter reject with icmp admin-prohibited
+		ip6 daddr @deny_v6 counter reject with icmpv6 admin-prohibited
+	}
+}

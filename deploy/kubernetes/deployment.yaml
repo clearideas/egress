@@ -1,0 +1,88 @@
+# Example Deployment for the egress proxy. Adjust image, namespace, secrets and settings.
+# See docs/OPERATIONS.md ("Kubernetes deployment notes") for the reasoning behind each part.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: egress-proxy
+  namespace: egress
+spec:
+  replicas: 3
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {app: egress-proxy}
+  template:
+    metadata:
+      labels: {app: egress-proxy}
+    spec:
+      terminationGracePeriodSeconds: 75        # preStop 10 + EGRESS_DRAIN_SECONDS 60 + 5
+      securityContext:
+        runAsNonRoot: true                     # the image's USER is numeric (31, "squid"), so this is verifiable
+        fsGroup: 31                            # secret files readable by the proxy's group (modes 0440)
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: egress
+          image: registry.example.com/egress-proxy:0.3.0   # pin by digest in production
+          ports:
+            - {name: proxy, containerPort: 3128}
+            - {name: monitor, containerPort: 9090}
+          env:
+            - {name: EGRESS_MODE, value: "origination"}
+            - {name: EGRESS_POLICY_URL, value: "https://egress-policy.egress-control.svc.cluster.local/decide"}
+            - {name: EGRESS_POLICY_TOKEN_FILE, value: "/etc/egress/policy-token/token"}
+            - {name: EGRESS_DRAIN_SECONDS, value: "60"}
+            # Readable refusals for sandboxes that trust the error CA (docs/OPERATIONS.md). Needs
+            # EGRESS_MODE=connect or both; sandboxes must trust egress-error-ca's tls.crt.
+            # - {name: EGRESS_ERROR_CA_CERT_FILE, value: "/etc/egress/error-ca/tls.crt"}
+            # - {name: EGRESS_ERROR_CA_KEY_FILE, value: "/etc/egress/error-ca/tls.key"}
+            - name: EGRESS_INSTANCE_ID
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+          livenessProbe:
+            httpGet: {path: /livez, port: monitor}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: monitor}
+            periodSeconds: 5
+            failureThreshold: 1
+          lifecycle:
+            preStop:
+              exec: {command: ["sleep", "10"]}   # let endpoints drop this pod before Squid stops accepting
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: "500m", memory: "256Mi"}
+            limits: {memory: "1Gi"}
+          volumeMounts:
+            - {name: run, mountPath: /run/egress}
+            - {name: policy-token, mountPath: /etc/egress/policy-token, readOnly: true}
+            # - {name: error-ca, mountPath: /etc/egress/error-ca, readOnly: true}
+      volumes:
+        - name: run
+          emptyDir: {medium: Memory, sizeLimit: 64Mi}
+        - name: policy-token
+          secret: {secretName: egress-policy-token}
+        # - name: error-ca
+        #   secret: {secretName: egress-error-ca, defaultMode: 0440}   # kubernetes.io/tls secret
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: egress-proxy
+  namespace: egress
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app: egress-proxy}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-proxy
+  namespace: egress
+spec:
+  selector: {app: egress-proxy}
+  ports:
+    - {name: proxy, port: 3128, targetPort: proxy}

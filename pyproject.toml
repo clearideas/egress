@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clearideas-egress"
-version = "0.1.0"
+version = "0.3.0"
 description = "Generic policy decisions for a Squid egress proxy"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,10 @@ dependencies = []
 
 [project.scripts]
 clearideas-egress-acl = "clearideas_egress.cli:main"
+clearideas-egress-auth = "clearideas_egress.auth:main"
+clearideas-egress-token = "clearideas_egress.auth:mint_main"
+clearideas-egress-render = "clearideas_egress.render:main"
+clearideas-egress-monitor = "clearideas_egress.monitor:main"
 
 [project.urls]
 Repository = "https://github.com/clearideas/egress"
@@ -32,3 +36,6 @@ Issues = "https://github.com/clearideas/egress/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+clearideas_egress = ["templates/*"]

@@ -1,0 +1,42 @@
+# Local demo of readable HTTPS refusals: generates a throwaway error CA in ./demo-ca and
+# configures the proxy with it. Not for production (the key is world-readable here; see
+# docs/OPERATIONS.md, "Readable errors for sandboxes").
+#   docker compose -f compose.yaml -f compose.error-ca.yaml up --build
+#   curl --proxy http://demo:<password>@127.0.0.1:3128 --cacert demo-ca/ca-bundle.pem https://not-allowed.example/
+# ./demo-ca/ca-bundle.pem is the public roots *plus* this CA, which is what sandboxes need: trusting
+# only the error CA would break every allowed HTTPS destination.
+services:
+  error-ca:
+    build: .
+    image: clearideas-egress:demo
+    user: "0"
+    read_only: true
+    network_mode: none
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        if [ ! -s /out/error-ca.pem ] || [ ! -s /out/error-ca.key ]; then
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 90 \
+            -subj "/CN=egress demo error CA" \
+            -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign" \
+            -keyout /out/error-ca.key -out /out/error-ca.pem
+        fi
+        # What a sandbox needs: the public roots *plus* this CA (never the CA alone).
+        for roots in /etc/ssl/certs/ca-certificates.crt /etc/ssl/cert.pem; do
+          if [ -s "$$roots" ]; then cp "$$roots" /out/ca-bundle.pem; break; fi
+        done
+        cat /out/error-ca.pem >> /out/ca-bundle.pem
+        chmod 0644 /out/error-ca.key /out/error-ca.pem /out/ca-bundle.pem
+    volumes:
+      - ./demo-ca:/out
+  egress:
+    image: clearideas-egress:demo
+    depends_on:
+      error-ca: {condition: service_completed_successfully}
+    environment:
+      EGRESS_ERROR_CA_CERT_FILE: /etc/egress-ca/error-ca.pem
+      EGRESS_ERROR_CA_KEY_FILE: /etc/egress-ca/error-ca.key
+    volumes:
+      - ./demo-ca:/etc/egress-ca:ro

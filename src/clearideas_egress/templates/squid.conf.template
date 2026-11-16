@@ -48,6 +48,7 @@ dns_defnames off
 icp_port 0
 htcp_port 0
 $dns_nameservers
+$pinger
 # --- limits (review M-5) ------------------------------------------------------
 request_body_max_size $request_body_max_size
 client_lifetime $client_lifetime seconds

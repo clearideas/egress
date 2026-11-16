@@ -2,11 +2,13 @@ import ipaddress
 import itertools
 import json
 import re
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
-from clearideas_egress.render import Settings, SettingsError, deny_cidrs, render
+from clearideas_egress.render import Settings, SettingsError, _pinger_setting, deny_cidrs, render
 
 DNS_ACL_TYPES = {"dst", "dstdomain", "dstdom_regex", "dst_as"}
 BUILTIN_DNS_ACLS = {"to_localhost", "to_linklocal"}
@@ -52,6 +54,18 @@ def render_env(env):
 
 def directives(text):
     return [line.split() for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+
+
+class SquidCapabilityTests(unittest.TestCase):
+    def test_pinger_directive_only_for_icmp_builds(self):
+        with mock.patch("clearideas_egress.render.shutil.which", return_value="/usr/sbin/squid"), \
+             mock.patch("clearideas_egress.render.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess([], 0, "configure options: --enable-icmp", "")
+            self.assertEqual(_pinger_setting(), "pinger_enable off\n")
+            run.return_value = subprocess.CompletedProcess([], 0, "configure options: --disable-icmp", "")
+            self.assertEqual(_pinger_setting(), "")
+        with mock.patch("clearideas_egress.render.shutil.which", return_value=None):
+            self.assertEqual(_pinger_setting(), "")
 
 
 class ConfigLintTests(unittest.TestCase):

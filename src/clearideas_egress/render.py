@@ -98,6 +98,23 @@ def _instance(env: Mapping[str, str]) -> str:
     return value
 
 
+def _pinger_setting() -> str:
+    """Disable Squid's ICMP pinger only when the installed build supports it.
+
+    Debian's Squid enables ICMP and needs this setting when running unprivileged;
+    Alpine's build omits ICMP and rejects the directive at config parse time.
+    """
+    squid = shutil.which("squid")
+    if squid is None:
+        return ""
+    try:
+        version = subprocess.run([squid, "-v"], capture_output=True, text=True,
+                                 timeout=5, check=True)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        raise SettingsError("cannot inspect Squid ICMP support") from error
+    return "pinger_enable off\n" if "--enable-icmp" in version.stdout + version.stderr else ""
+
+
 # Read-only cache-manager actions served on the loopback admin port (for the monitor).
 ADMIN_ACTIONS = ("info", "counters", "5min", "utilization", "external_acl", "basicauthenticator")
 
@@ -579,6 +596,7 @@ def render(settings: Settings, credential_rules: tuple[CredentialRule, ...] | No
         "cache_log": settings.cache_log,
         "dns_nameservers": (f"dns_nameservers {' '.join(settings.dns_nameservers)}\n"
                             if settings.dns_nameservers else ""),
+        "pinger": _pinger_setting(),
         "request_body_max_size": settings.request_body_max_size,
         "client_lifetime": settings.client_lifetime,
         "read_timeout": settings.read_timeout,
